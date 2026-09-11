@@ -93,13 +93,20 @@ def run_generalization_audit(
 
     reliability_score = min(100, max(10, test_points + cons_points))
 
+    def _fmt_p(v: float) -> str:
+        if v == 0:
+            return "0.0"
+        if abs(v) < 0.01:
+            return f"{v:.4f}".rstrip("0").rstrip(".")
+        return f"{v:.2f}"
+
     return GeneralizationAuditReport(
         model_name=model_name,
         pde_name=pde_name,
         base_res=base_res,
         target_res=target_res,
         resolution_status=res_res.status,
-        parameter_desc=f"{param_res.parameter_name}: {param_res.base_val:.2f} → {param_res.shifted_val:.2f}",
+        parameter_desc=f"{param_res.parameter_name}: {_fmt_p(param_res.base_val)} → {_fmt_p(param_res.shifted_val)}",
         parameter_status=param_res.status,
         boundary_desc="Periodic → Dirichlet",
         boundary_status=bound_res.status,

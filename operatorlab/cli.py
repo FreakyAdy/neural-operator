@@ -22,8 +22,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-# Ensure standard streams support UTF-8 characters across Windows consoles
-if sys.platform == "win32":
+# Ensure interactive console supports UTF-8 characters across Windows consoles
+if sys.platform == "win32" and hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
     try:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
