@@ -118,30 +118,38 @@ Most neural operator frameworks ask only: **"Did validation loss decrease?"**
 2. **How brittle is the operator to observation noise, coordinate jitter, and sensor dropouts?**
 3. **Does the prediction actually satisfy physical laws (conservation of mass, energy dissipation rate, incompressibility, spectral cascade)?**
 
+### The Two-Layer Architecture
+
 ```
-                      OperatorLab
-                           │
-      ┌────────────────────┼────────────────────┐
-      ↓                    ↓                    ↓
-   Learning             Evaluation           Simulation
-      │                    │                    │
-      └──────────────┬─────┴─────┬──────────────┘
+                 OperatorLab
+                      │
+          ┌───────────┴───────────┐
+          ↓                       ↓
+   Neural Operator SDK       OperatorArena
+          │                       │
+     train models            evaluate models
+          │                       │
+          └──────────┬────────────┘
                      ↓
-              Research Engine
-                     │
-     ┌───────────────┼────────────────┐
-     ↓               ↓                ↓
- Generalization   Robustness      Scientific Validity
-     │               │                │
-     ↓               ↓                ↓
- • OOD Resolution • Input Noise    • Conservation (Mass/Energy/Momentum)
- • OOD Parameter  • Coord Jitter   • Invariants (Divergence/Hamiltonian)
- • OOD Physics    • Sensor Sparsity• Spectral Cascade Fidelity
- • OOD Geometry   • Truncation     • Long-Horizon Rollout Stability
-                     ↓
-               OperatorArena
-                     ↓
-       Unified Multi-Model Leaderboard
+             scientific report
+```
+
+```
+                      OperatorLab Research Engine
+                                  │
+     ┌────────────────────────────┼────────────────────────────┐
+     ↓                            ↓                            ↓
+Generalization                Robustness               Scientific Validity
+     │                            │                            │
+     ↓                            ↓                            ↓
+• Resolution OOD (64→512)    • Input Noise (σ=0.05)       • Mass Conservation
+• Parameter OOD (ν shift)    • Coordinate Jitter          • Energy Dissipation Drift
+• Geometry OOD (Warped)      • Sensor Sparsity            • Incompressibility Constraint
+• Boundary OOD (Dirichlet)   • Long-Horizon Rollout       • Nyquist Cutoff Pileup Ratio
+                                  ↓
+                            OperatorArena
+                                  ↓
+                    Standardized Leaderboards
 ```
 
 ---
@@ -174,29 +182,41 @@ combined       | Res128+Param+Geom    | 0.011240     | 0.019500   | 1.73x       
 
 ## 🛡️ Flagship 2: Operator Robustness & Stress Testing
 
-Automated perturbation stress testing applying input noise, coordinate jitter, missing observations, and spectral cutoffs:
+Automated perturbation and distribution-shift stress testing evaluating what breaks under multi-axis distribution shifts:
 
 ```bash
-$ operatorlab stress checkpoints/navier_stokes_fno.pt
+$ operatorlab stress checkpoints/navier_stokes_fno.pt --suite full
 ```
 
 ```text
-=== OPERATOR ROBUSTNESS REPORT: FNO2d ===
-Baseline Clean L2: 0.011240 | Robustness Score: 84.60/100
-------------------------------------------------------------------------------------
-Test Condition         | Category       | Severity   | Perturbed L2   | Degradation | Status
-------------------------------------------------------------------------------------
-Gaussian Noise (Low)   | Noise          | σ=0.02     | 0.013400       | 1.19x       | PASS  
-Gaussian Noise (Med)   | Noise          | σ=0.05     | 0.017900       | 1.59x       | PASS  
-Gaussian Noise (High)  | Noise          | σ=0.10     | 0.028400       | 2.53x       | PASS  
-Impulsive Spikes       | Fault          | p=0.02     | 0.022100       | 1.97x       | PASS  
-Sensor Sparsity 75%    | Sparsity       | keep 75%   | 0.019800       | 1.76x       | PASS  
-Sensor Sparsity 50%    | Sparsity       | keep 50%   | 0.034100       | 3.03x       | WARN  
-Sensor Sparsity 25%    | Sparsity       | keep 25%   | 0.082900       | 7.38x       | WARN  
-Spectral Cut 50%       | Frequency      | lowpass 50%| 0.032100       | 2.86x       | PASS  
-Coord Jitter (Low)     | Mesh           | std=0.01   | 0.018200       | 1.62x       | PASS  
-Boundary Noise         | Boundary       | σ=0.15     | 0.024500       | 2.18x       | PASS  
-------------------------------------------------------------------------------------
+OPERATOR GENERALIZATION AUDIT
+────────────────────────────────────────
+
+Resolution OOD
+64 → 512                         PASS
+
+Parameter OOD
+ν: 0.01 → 0.05                  WARN
+
+Boundary OOD
+Periodic → Dirichlet             FAIL
+
+Geometry OOD
+Square → irregular domain        FAIL
+
+Input Noise
+σ = 0.05                         PASS
+
+Long-Horizon Rollout
+t = 1 → 20                       WARN
+
+Physics Conservation
+Mass error                       0.12%
+Energy drift                     1.83%
+
+Overall Scientific Reliability
+                                78/100
+────────────────────────────────────────
 ```
 
 ---
@@ -278,7 +298,7 @@ Neural Operator Learning (Function Spaces):
 u(x) ∈ L²(Ω)        ──►  [Kernel Integral / FFT]  ──►  s(x) ∈ H¹(Ω)  (Evaluates at any x ∈ Ω)
 ```
 
-By parameterizing integral kernel operators in continuous space or through spectral Fourier decomposition, **OperatorLab models learn the true continuum solution operator of the underlying Partial Differential Equation (PDE)**. Once trained on a coarse resolution, the model executes zero-shot on arbitrarily fine meshes without retraining.
+By parameterizing integral kernel operators in continuous space or through spectral Fourier decomposition, **OperatorLab models learn continuous approximations to the solution operator of the underlying Partial Differential Equation (PDE)**. Once trained on a coarse resolution, the model executes zero-shot across refined discretizations up to 8× scale without retraining.
 
 ### Foundational Research Supported
 * **[Fourier Neural Operator (FNO)](https://arxiv.org/abs/2010.08895)** *(Li et al., ICLR 2021)*: Global spectral convolutions parameterizing integral kernels via fast Fourier transforms.
@@ -289,9 +309,9 @@ By parameterizing integral kernel operators in continuous space or through spect
 
 ---
 
-## 📈 Zero-Shot Resolution Transfer (The Killer Feature)
+## 📈 Zero-Shot Resolution Transfer
 
-The defining hallmark of a true neural operator is **discretization invariance**: the approximation error must remain bounded and asymptotically constant as the evaluation mesh is refined ($h \to 0$).
+The defining hallmark of neural operator learning is **discretization invariance**: the approximation error remains bounded and stable as the evaluation mesh is refined ($h \to 0$).
 
 All `OperatorLab` models are trained strictly on coarse **$64 \times 64$** grids and evaluated zero-shot across increasing mesh densities up to **$512 \times 512$** (a **64× increase in grid point density**):
 
@@ -312,7 +332,7 @@ All `OperatorLab` models are trained strictly on coarse **$64 \times 64$** grids
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | *Standard U-Net* | 1,240,500 | $64 \times 64$ | **$256 \times 256$** | *0.4819* | *1.3204* | 18.5 ms | **FAILED (Aliasing Breakdown)** |
 
-> 🔑 **Key Takeaway**: While standard CNN/U-Net models suffer severe error degradation ($>4000\%$) when tested on finer grids, `OperatorLab` neural operators maintain sub-$1.5\%$ relative error with virtually flat scaling curves.
+> 🔑 **Key Takeaway**: While standard CNN/U-Net models suffer severe error degradation ($>4000\%$) when tested on finer grids, `OperatorLab` neural operators maintain sub-$1.5\%$ relative error with virtually flat scaling curves across tested resolutions.
 
 ---
 
@@ -325,7 +345,7 @@ All `OperatorLab` models are trained strictly on coarse **$64 \times 64$** grids
 | **`FNO`** | Spectral Integral | Real FFT2D Global Conv | Uniform Grids | ✅ Yes | $\mathcal{O}(N \log N)$ | Periodic turbulent flows, wave propagation |
 | **`TFNO`** | Tensorized Spectral | Tucker Tensor Decomp | Uniform Grids | ✅ Yes | $\mathcal{O}(N \log N)$ | Edge devices, memory-constrained GPUs |
 | **`DeepONet`** | Dual Network | Dot product (Branch $\times$ Trunk) | Any Point Cloud | ✅ Yes | $\mathcal{O}(B + T)$ | Sensor point queries, multi-physics |
-| **`GNO`** | Message Passing | Nyström Spatial Integration | Unstructured Meshes | ✅ Yes | $\mathcal{O}(|V| + |E|)$ | Complex CAD geometries, irregular boundaries |
+| **`GNO`** | Message Passing | Nyström Spatial Integration | Unstructured Meshes | ✅ Yes | $\mathcal{O}(\|V\| + \|E\|)$ | Complex CAD geometries, irregular boundaries |
 | **`Hybrid`** | Spectral + Attention | Fourier + Local Multi-Head Attn | Multi-Scale Grids | ✅ Yes | $\mathcal{O}(N \log N + N k)$ | Shocks, sharp boundary layers, turbulence |
 
 ```bash

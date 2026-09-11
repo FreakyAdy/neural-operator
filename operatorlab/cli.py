@@ -18,8 +18,19 @@ Commands:
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
+
+# Ensure standard streams support UTF-8 characters across Windows consoles
+if sys.platform == "win32":
+    try:
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import typer
 from rich.console import Console
@@ -664,11 +675,24 @@ def _load_model_and_pde_from_checkpoint(checkpoint: Path, device: str, override_
     from operatorlab.configs.schema import ModelConfig, PDEConfig, _merge_dataclass
 
     ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
-    ckpt_config = ckpt.get("config", {})
+    ckpt_config = ckpt.get("config", {}) or {}
     model_config_dict = ckpt_config.get("model", {})
     model_cfg = _merge_dataclass(ModelConfig, model_config_dict) if model_config_dict else ModelConfig()
+
+    sd = ckpt.get("model_state_dict", {})
+    if not model_config_dict and sd:
+        if "lifting.weight" in sd:
+            model_cfg.width = sd["lifting.weight"].shape[0]
+            in_d = sd["lifting.weight"].shape[1]
+            model_cfg.input_dim = max(1, in_d - 2)
+            n_convs = len([k for k in sd if k.endswith(".weights1")])
+            if n_convs > 0:
+                model_cfg.n_layers = n_convs
+            if "spectral_convs.0.weights1" in sd:
+                model_cfg.modes = sd["spectral_convs.0.weights1"].shape[-1]
+
     model = _build_model(model_cfg)
-    model.load_state_dict(ckpt["model_state_dict"])
+    model.load_state_dict(sd)
     model.to(device)
     model.eval()
 
@@ -728,20 +752,19 @@ def ood(
 @app.command()
 def stress(
     checkpoint: Path = typer.Argument(..., help="Path to model checkpoint"),
+    suite: str = typer.Option("full", "--suite", "-s", help="Stress suite: 'full' (comprehensive generalization audit) or 'perturbations' (noise/sparsity matrix)"),
     pde: Optional[str] = typer.Option(None, "--pde", help="Override PDE type"),
-    resolution: Optional[int] = typer.Option(None, help="Test resolution"),
-    n_samples: int = typer.Option(50, help="Number of test samples"),
+    resolution: Optional[int] = typer.Option(None, help="Base/test resolution"),
+    target_resolution: Optional[int] = typer.Option(None, "--target-res", help="Target OOD resolution (defaults to 4x base)"),
+    n_samples: int = typer.Option(30, help="Number of test samples per condition"),
     device: str = typer.Option("auto", help="Device ('cpu', 'cuda', 'auto')"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save report to JSON"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
-    """Run operator robustness and stress testing under perturbations."""
+    """Run operator robustness and stress testing under distribution shifts and perturbations."""
     _setup_logging(verbose)
     import json
     import torch
-    from torch.utils.data import DataLoader
-    from operatorlab.data.datasets import InMemoryDataset
-    from operatorlab.evaluation.stress import run_stress_test
 
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -749,25 +772,52 @@ def stress(
     console.print(f"[bold cyan]Loading checkpoint for stress testing:[/] {checkpoint}")
     model, pde_problem, model_cfg, pde_cfg = _load_model_and_pde_from_checkpoint(checkpoint, device, override_pde=pde)
 
-    test_res = resolution or pde_cfg.resolution
-    console.print(f"  Model: [bold]{model_cfg.type}[/] | PDE: [bold]{pde_problem.name}[/] | Resolution: {test_res}×{test_res}")
-    console.print(f"Generating {n_samples} evaluation samples...")
+    base_res = resolution or pde_cfg.resolution
+    target_res = target_resolution or (base_res * 4 if base_res <= 128 else base_res * 2)
 
-    test_data = pde_problem.generate_dataset(n_samples=n_samples, resolution=test_res, seed=777)
-    ds = InMemoryDataset(test_data["a"], test_data["u"], normalize=False)
-    loader = DataLoader(ds, batch_size=min(20, n_samples))
+    console.print(f"  Model: [bold]{model_cfg.type}[/] | PDE: [bold]{pde_problem.name}[/] | Base Res: {base_res}×{base_res}")
 
-    console.print("[bold yellow]Executing perturbation stress suite...[/]")
-    report = run_stress_test(model=model, test_loader=loader, device=device)
+    if suite.lower() == "full":
+        from operatorlab.benchmark.ood import run_generalization_audit
 
-    console.print("\n" + report.summary_table())
+        console.print("[bold yellow]Executing Full Generalization & Reliability Audit Suite...[/]\n")
+        report = run_generalization_audit(
+            model=model,
+            pde=pde_problem,
+            base_res=base_res,
+            target_res=target_res,
+            n_samples=min(20, n_samples),
+            device=device,
+        )
 
-    if output is not None:
-        output = Path(output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        with open(output, "w", encoding="utf-8") as f:
-            json.dump(report.to_dict(), f, indent=2)
-        console.print(f"\n[bold green]Saved robustness report to:[/] {output}")
+        console.print(report.format_audit_card())
+
+        if output is not None:
+            output = Path(output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            report.save_json(output)
+            console.print(f"\n[bold green]Saved generalization audit report to:[/] {output}")
+    else:
+        from torch.utils.data import DataLoader
+        from operatorlab.data.datasets import InMemoryDataset
+        from operatorlab.evaluation.stress import run_stress_test
+
+        console.print(f"Generating {n_samples} perturbation evaluation samples...")
+        test_data = pde_problem.generate_dataset(n_samples=n_samples, resolution=base_res, seed=777)
+        ds = InMemoryDataset(test_data["a"], test_data["u"], normalize=False)
+        loader = DataLoader(ds, batch_size=min(20, n_samples))
+
+        console.print("[bold yellow]Executing perturbation stress matrix...[/]")
+        report = run_stress_test(model=model, test_loader=loader, device=device)
+
+        console.print("\n" + report.summary_table())
+
+        if output is not None:
+            output = Path(output)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with open(output, "w", encoding="utf-8") as f:
+                json.dump(report.to_dict(), f, indent=2)
+            console.print(f"\n[bold green]Saved robustness report to:[/] {output}")
 
 
 @app.command()
