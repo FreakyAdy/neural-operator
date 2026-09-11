@@ -1,0 +1,70 @@
+Metadata-Version: 2.4
+Name: operatorlab
+Version: 0.1.0
+Summary: Research-grade neural operator framework for learning PDE operator mappings between function spaces.
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: torch>=2.1
+Requires-Dist: numpy>=1.24
+Requires-Dist: scipy>=1.10
+Requires-Dist: h5py>=3.8
+Requires-Dist: typer>=0.9
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: matplotlib>=3.7
+Requires-Dist: tqdm>=4.65
+Requires-Dist: einops>=0.7
+Requires-Dist: rich>=13.0
+Provides-Extra: geometric
+Requires-Dist: torch-geometric>=2.3; extra == "geometric"
+Requires-Dist: torch-scatter; extra == "geometric"
+Requires-Dist: torch-sparse; extra == "geometric"
+Provides-Extra: tensorly
+Requires-Dist: tensorly>=0.8; extra == "tensorly"
+Provides-Extra: mlflow
+Requires-Dist: mlflow>=2.8; extra == "mlflow"
+Provides-Extra: wandb
+Requires-Dist: wandb>=0.15; extra == "wandb"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+Provides-Extra: all
+Requires-Dist: operatorlab[dev,geometric,mlflow,tensorly,wandb]; extra == "all"
+
+# OperatorLab
+
+Research-grade neural operator framework for learning mappings between function spaces over physical domains.
+
+## Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Quick Start
+
+```bash
+# Generate training data
+operatorlab generate heat --resolution 64 --n-samples 1000 --output data/
+
+# Train a model
+operatorlab train configs/heat_equation.yaml
+
+# Evaluate with resolution sweep
+operatorlab evaluate checkpoint.pt --resolution-sweep
+
+# Compare architectures
+operatorlab compare checkpoint_a.pt checkpoint_b.pt --resolution-sweep
+```
+
+## Architecture
+
+OperatorLab implements five neural operator architectures:
+
+- **FNO** — Fourier Neural Operator (spectral convolution in Fourier domain)
+- **TFNO** — Tensorized FNO (Tucker-decomposed spectral weights)
+- **DeepONet** — Deep Operator Network (branch-trunk architecture)
+- **GNO** — Graph Neural Operator (message-passing on spatial graphs)
+- **Hybrid** — Fourier + local attention
+
+All architectures support **zero-shot resolution transfer**: train at one resolution, evaluate at any other.

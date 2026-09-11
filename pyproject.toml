@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "operatorlab"
+version = "0.1.0"
+description = "Research-grade neural operator framework for learning PDE operator mappings between function spaces."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "h5py>=3.8",
+    "typer>=0.9",
+    "pyyaml>=6.0",
+    "matplotlib>=3.7",
+    "tqdm>=4.65",
+    "einops>=0.7",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+geometric = ["torch-geometric>=2.3", "torch-scatter", "torch-sparse"]
+tensorly = ["tensorly>=0.8"]
+mlflow = ["mlflow>=2.8"]
+wandb = ["wandb>=0.15"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+all = ["operatorlab[geometric,tensorly,mlflow,wandb,dev]"]
+
+[project.scripts]
+operatorlab = "operatorlab.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["operatorlab*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

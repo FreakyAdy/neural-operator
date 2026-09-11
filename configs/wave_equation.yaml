@@ -1,0 +1,43 @@
+# Wave Equation — FNO Baseline
+experiment:
+  name: fno_wave_baseline
+  seed: 42
+  output_dir: experiments/
+
+model:
+  type: fno
+  modes: 12
+  width: 32
+  n_layers: 4
+  input_dim: 1
+  output_dim: 1
+
+pde:
+  type: wave
+  c: 1.0
+  T: 0.5
+  resolution: 64
+  dt: 0.001
+
+data:
+  n_train: 1000
+  n_val: 200
+  batch_size: 20
+  seed: 42
+
+training:
+  epochs: 300
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  scheduler: cosine
+  amp: true
+  grad_clip: 1.0
+  loss:
+    l2_weight: 1.0
+    h1_weight: 0.0
+    pde_weight: 0.0
+
+evaluation:
+  resolution_sweep: [64, 128, 256]
+  eval_every: 50
