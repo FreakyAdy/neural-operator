@@ -304,7 +304,7 @@ By parameterizing integral kernel operators in continuous space or through spect
 * **[Fourier Neural Operator (FNO)](https://arxiv.org/abs/2010.08895)** *(Li et al., ICLR 2021)*: Global spectral convolutions parameterizing integral kernels via fast Fourier transforms.
 * **[Tensorized FNO (TFNO)](https://arxiv.org/abs/2302.04419)** *(Kossaifi et al., 2023)*: Tucker tensor decomposition of complex spectral weight matrices, cutting parameters by 60–80% with zero accuracy loss.
 * **[Deep Operator Network (DeepONet)](https://www.nature.com/articles/s42256-021-00302-5)** *(Lu et al., Nature Machine Intelligence 2021)*: Universal operator approximation using coupled branch (input function) and trunk (continuous coordinates) networks.
-* **[Graph Neural Operator (GNO)](https://arxiv.org/abs/2003.03485)** *(Li et al., 2020)*: Message-passing kernel integration across arbitrary, non-uniform point clouds and unstructured meshes.
+* **[Graph Neural Operator (GNO)](https://arxiv.org/abs/2003.03485)** *(Li et al., 2020)*: Message-passing kernel integration across non-uniform point clouds and unstructured meshes.
 * **[Hybrid Spectral-Attention Operator](https://arxiv.org/abs/2111.13801)**: Multi-scale Fourier spectral convolution coupled with local multi-head spatial self-attention.
 
 ---
@@ -345,7 +345,7 @@ All `OperatorLab` models are trained strictly on coarse **$64 \times 64$** grids
 | **`FNO`** | Spectral Integral | Real FFT2D Global Conv | Uniform Grids | ✅ Yes | $\mathcal{O}(N \log N)$ | Periodic turbulent flows, wave propagation |
 | **`TFNO`** | Tensorized Spectral | Tucker Tensor Decomp | Uniform Grids | ✅ Yes | $\mathcal{O}(N \log N)$ | Edge devices, memory-constrained GPUs |
 | **`DeepONet`** | Dual Network | Dot product (Branch $\times$ Trunk) | Any Point Cloud | ✅ Yes | $\mathcal{O}(B + T)$ | Sensor point queries, multi-physics |
-| **`GNO`** | Message Passing | Nyström Spatial Integration | Unstructured Meshes | ✅ Yes | $\mathcal{O}(\|V\| + \|E\|)$ | Complex CAD geometries, irregular boundaries |
+| **`GNO`** | Message Passing | Nyström Spatial Integration | Unstructured Meshes | ✅ Yes | $\mathcal{O}(N_v + N_e)$ | Complex CAD geometries, irregular boundaries |
 | **`Hybrid`** | Spectral + Attention | Fourier + Local Multi-Head Attn | Multi-Scale Grids | ✅ Yes | $\mathcal{O}(N \log N + N k)$ | Shocks, sharp boundary layers, turbulence |
 
 ```bash

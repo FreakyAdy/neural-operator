@@ -28,7 +28,7 @@ pytest tests/ -v
 ### Adding New Neural Operators
 All models inherit from `torch.nn.Module` and should adhere to the following conventions:
 1. Accept input tensors with coordinates/grid channel concatenation where applicable.
-2. Support arbitrary spatial resolution at inference (zero-shot transfer capability).
+2. Support continuous spatial discretization at inference (zero-shot transfer capability).
 3. Place model architecture in `operatorlab/models/`.
 4. Register the new model in `operatorlab/models/__init__.py` and update `operatorlab/cli.py:list_models`.
 5. Add unit tests covering parameter initialization, forward pass shape invariance, and backward gradient flow under `tests/`.
