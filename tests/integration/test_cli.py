@@ -85,3 +85,43 @@ def test_visualize_help() -> None:
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0
+
+
+def test_ood_help() -> None:
+    """OOD subcommand --help works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "operatorlab.cli", "ood", "--help"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0
+    assert "out-of-distribution" in result.stdout.lower() or "ood" in result.stdout.lower()
+
+
+def test_stress_help() -> None:
+    """Stress subcommand --help works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "operatorlab.cli", "stress", "--help"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0
+    assert "robustness" in result.stdout.lower() or "stress" in result.stdout.lower()
+
+
+def test_audit_help() -> None:
+    """Audit subcommand --help works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "operatorlab.cli", "audit", "--help"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0
+    assert "scientific validity" in result.stdout.lower() or "audit" in result.stdout.lower()
+
+
+def test_arena_help() -> None:
+    """Arena subcommand --help works."""
+    result = subprocess.run(
+        [sys.executable, "-m", "operatorlab.cli", "arena", "--help"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0
+    assert "arena" in result.stdout.lower() or "leaderboard" in result.stdout.lower()

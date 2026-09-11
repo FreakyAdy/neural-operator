@@ -9,6 +9,10 @@ Commands:
     compare     Compare multiple checkpoints
     visualize   Generate visualizations
     generate    Generate PDE training data
+    ood         Run Out-of-Distribution (OOD) operator generalization benchmark
+    stress      Run operator robustness and perturbation stress tests
+    audit       Audit scientific validity and physical invariants
+    arena       Run OperatorArena multi-model competitive benchmark
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ from rich.table import Table
 
 app = typer.Typer(
     name="operatorlab",
-    help="Research-grade neural operator framework for PDE operator learning.",
+    help="Scientific Generalization & Robustness Laboratory for Neural Operators.",
     no_args_is_help=True,
 )
 console = Console()
@@ -652,6 +656,207 @@ def generate(
     console.print(f"[bold green]Saved {n_samples} samples to:[/] {filepath}")
     console.print(f"  a shape: {tuple(data['a'].shape)}")
     console.print(f"  u shape: {tuple(data['u'].shape)}")
+
+
+def _load_model_and_pde_from_checkpoint(checkpoint: Path, device: str, override_pde: Optional[str] = None):
+    """Load model and PDE problem instance from a saved checkpoint."""
+    import torch
+    from operatorlab.configs.schema import ModelConfig, PDEConfig, _merge_dataclass
+
+    ckpt = torch.load(checkpoint, map_location=device, weights_only=False)
+    ckpt_config = ckpt.get("config", {})
+    model_config_dict = ckpt_config.get("model", {})
+    model_cfg = _merge_dataclass(ModelConfig, model_config_dict) if model_config_dict else ModelConfig()
+    model = _build_model(model_cfg)
+    model.load_state_dict(ckpt["model_state_dict"])
+    model.to(device)
+    model.eval()
+
+    pde_config_dict = ckpt_config.get("pde", {})
+    pde_cfg = _merge_dataclass(PDEConfig, pde_config_dict) if pde_config_dict else PDEConfig()
+    if override_pde is not None:
+        pde_cfg.type = override_pde
+    pde_problem = _build_pde(pde_cfg)
+
+    return model, pde_problem, model_cfg, pde_cfg
+
+
+@app.command()
+def ood(
+    checkpoint: Path = typer.Argument(..., help="Path to model checkpoint"),
+    pde: Optional[str] = typer.Option(None, "--pde", help="Override PDE type (e.g. navier_stokes, heat)"),
+    resolution: Optional[int] = typer.Option(None, help="Base resolution"),
+    n_samples: int = typer.Option(30, help="Samples per OOD condition"),
+    device: str = typer.Option("auto", help="Device ('cpu', 'cuda', 'auto')"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save report to JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Run Out-of-Distribution (OOD) operator generalization benchmark."""
+    _setup_logging(verbose)
+    import json
+    import torch
+    from operatorlab.evaluation.ood import run_ood_generalization_benchmark
+
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    console.print(f"[bold cyan]Loading checkpoint for OOD evaluation:[/] {checkpoint}")
+    model, pde_problem, model_cfg, pde_cfg = _load_model_and_pde_from_checkpoint(checkpoint, device, override_pde=pde)
+
+    base_res = resolution or pde_cfg.resolution
+    console.print(f"  Model: [bold]{model_cfg.type}[/] | PDE: [bold]{pde_problem.name}[/] | Base Res: {base_res}×{base_res}")
+    console.print("[bold yellow]Running OOD Generalization Suite...[/]")
+
+    report = run_ood_generalization_benchmark(
+        model=model,
+        pde=pde_problem,
+        base_resolution=base_res,
+        n_samples=n_samples,
+        device=device,
+    )
+
+    console.print("\n" + report.summary_table())
+
+    if output is not None:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(report.to_dict(), f, indent=2)
+        console.print(f"\n[bold green]Saved OOD report to:[/] {output}")
+
+
+@app.command()
+def stress(
+    checkpoint: Path = typer.Argument(..., help="Path to model checkpoint"),
+    pde: Optional[str] = typer.Option(None, "--pde", help="Override PDE type"),
+    resolution: Optional[int] = typer.Option(None, help="Test resolution"),
+    n_samples: int = typer.Option(50, help="Number of test samples"),
+    device: str = typer.Option("auto", help="Device ('cpu', 'cuda', 'auto')"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save report to JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Run operator robustness and stress testing under perturbations."""
+    _setup_logging(verbose)
+    import json
+    import torch
+    from torch.utils.data import DataLoader
+    from operatorlab.data.datasets import InMemoryDataset
+    from operatorlab.evaluation.stress import run_stress_test
+
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    console.print(f"[bold cyan]Loading checkpoint for stress testing:[/] {checkpoint}")
+    model, pde_problem, model_cfg, pde_cfg = _load_model_and_pde_from_checkpoint(checkpoint, device, override_pde=pde)
+
+    test_res = resolution or pde_cfg.resolution
+    console.print(f"  Model: [bold]{model_cfg.type}[/] | PDE: [bold]{pde_problem.name}[/] | Resolution: {test_res}×{test_res}")
+    console.print(f"Generating {n_samples} evaluation samples...")
+
+    test_data = pde_problem.generate_dataset(n_samples=n_samples, resolution=test_res, seed=777)
+    ds = InMemoryDataset(test_data["a"], test_data["u"], normalize=False)
+    loader = DataLoader(ds, batch_size=min(20, n_samples))
+
+    console.print("[bold yellow]Executing perturbation stress suite...[/]")
+    report = run_stress_test(model=model, test_loader=loader, device=device)
+
+    console.print("\n" + report.summary_table())
+
+    if output is not None:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(report.to_dict(), f, indent=2)
+        console.print(f"\n[bold green]Saved robustness report to:[/] {output}")
+
+
+@app.command()
+def audit(
+    checkpoint: Path = typer.Argument(..., help="Path to model checkpoint"),
+    pde: Optional[str] = typer.Option(None, "--pde", help="Override PDE type"),
+    resolution: Optional[int] = typer.Option(None, help="Test resolution"),
+    n_samples: int = typer.Option(50, help="Number of test samples"),
+    max_steps: int = typer.Option(25, help="Max autoregressive rollout steps"),
+    device: str = typer.Option("auto", help="Device ('cpu', 'cuda', 'auto')"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save audit to JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Audit scientific validity and physical invariants of a trained model."""
+    _setup_logging(verbose)
+    import json
+    import torch
+    from torch.utils.data import DataLoader
+    from operatorlab.data.datasets import InMemoryDataset
+    from operatorlab.evaluation.scientific_audit import run_scientific_audit
+
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    console.print(f"[bold cyan]Loading checkpoint for scientific audit:[/] {checkpoint}")
+    model, pde_problem, model_cfg, pde_cfg = _load_model_and_pde_from_checkpoint(checkpoint, device, override_pde=pde)
+
+    test_res = resolution or pde_cfg.resolution
+    console.print(f"  Model: [bold]{model_cfg.type}[/] | PDE: [bold]{pde_problem.name}[/] | Resolution: {test_res}×{test_res}")
+    console.print(f"Generating {n_samples} audit samples...")
+
+    test_data = pde_problem.generate_dataset(n_samples=n_samples, resolution=test_res, seed=888)
+    ds = InMemoryDataset(test_data["a"], test_data["u"], normalize=False)
+    loader = DataLoader(ds, batch_size=min(20, n_samples))
+
+    console.print("[bold yellow]Auditing physical invariants and conservation laws...[/]")
+    card = run_scientific_audit(model=model, pde=pde_problem, test_loader=loader, device=device, max_rollout_steps=max_steps)
+
+    console.print("\n" + card.summary_card())
+
+    if output is not None:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(card.to_dict(), f, indent=2)
+        console.print(f"\n[bold green]Saved scientific audit to:[/] {output}")
+
+
+@app.command()
+def arena(
+    pde: str = typer.Option("navier_stokes", "--pde", help="Target PDE for competition"),
+    resolution: int = typer.Option(64, "--resolution", "-r", help="Grid resolution"),
+    n_samples: int = typer.Option(25, "--samples", "-n", help="Samples per condition"),
+    device: str = typer.Option("auto", help="Device ('cpu', 'cuda', 'auto')"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save leaderboard to JSON"),
+    verbose: bool = typer.Option(False, "--verbose", "-v"),
+) -> None:
+    """Run OperatorArena multi-model competitive benchmark and leaderboard."""
+    _setup_logging(verbose)
+    import torch
+    from operatorlab.arena.benchmark import ArenaBenchmark
+    from operatorlab.configs.schema import PDEConfig
+    from operatorlab.models.deeponet import DeepONet
+    from operatorlab.models.fno import FNO2d
+    from operatorlab.models.hybrid import HybridOperator
+    from operatorlab.models.tfno import TFNO2d
+
+    if device == "auto":
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    pde_problem = _build_pde(PDEConfig(type=pde, resolution=resolution))
+    console.print(f"[bold cyan]Starting OperatorArena on {pde_problem.name} ({resolution}×{resolution})...[/]")
+
+    modes = min(12, resolution // 2)
+    models = {
+        "FNO": FNO2d(modes1=modes, modes2=modes, width=32, n_layers=4),
+        "TFNO": TFNO2d(modes1=modes, modes2=modes, width=32, n_layers=4, rank=8),
+        "DeepONet": DeepONet(branch_input_dim=resolution * resolution, hidden_dim=64, n_basis=64),
+        "Hybrid": HybridOperator(modes1=modes, modes2=modes, width=32, n_fno_layers=2, n_attention_layers=1),
+    }
+
+    arena_runner = ArenaBenchmark(pde=pde_problem, resolution=resolution, n_eval_samples=n_samples, device=device)
+    leaderboard = arena_runner.run(models)
+
+    console.print("\n" + leaderboard.terminal_table())
+
+    if output is not None:
+        leaderboard.save_json(output)
+        console.print(f"\n[bold green]Saved Arena leaderboard to:[/] {output}")
 
 
 if __name__ == "__main__":

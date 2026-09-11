@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "operatorlab"
 version = "0.1.0"
-description = "Research-grade neural operator framework for learning PDE operator mappings between function spaces."
+description = "Scientific Generalization & Robustness Laboratory for neural operators learning PDE mappings between function spaces."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
