@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 # Check for torch_geometric availability
 _HAS_PYG = False
 try:
-    import torch_geometric  # noqa: F401
-    from torch_geometric.nn import MessagePassing, knn_graph, radius_graph
+    import torch_geometric  # type: ignore # noqa: F401
+    from torch_geometric.nn import MessagePassing, knn_graph, radius_graph  # type: ignore # noqa: F401
     _HAS_PYG = True
 except ImportError:
     pass
