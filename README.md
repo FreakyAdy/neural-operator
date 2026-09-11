@@ -16,6 +16,7 @@
 [![PyTorch 2.0+](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org)
 
 <p align="center">
+  <a href="#-what-is-operatorlab-in-plain-english"><b>💡 What is OperatorLab?</b></a> •
   <a href="#-the-core-research-engine"><b>🎯 Research Engine</b></a> •
   <a href="#-flagship-1-out-of-distribution-ood-generalization"><b>🧪 OOD Generalization</b></a> •
   <a href="#-flagship-2-operator-robustness--stress-testing"><b>🛡️ Stress Testing</b></a> •
@@ -29,6 +30,83 @@
 > **📓 Interactive Resolution Scaling Demo** — Explore zero-shot continuous transfer in [`notebooks/resolution_scaling_demo.ipynb`](notebooks/resolution_scaling_demo.ipynb). Train on coarse $64 \times 64$ grids and evaluate zero-shot up to $512 \times 512$ with preserved spectral kinetic energy and flat relative $L_2$ error!
 
 </div>
+
+---
+
+## 💡 What is OperatorLab? (In Plain English)
+
+If you are new to scientific machine learning or neural operators, here is what this project is, why it matters, and where it fits.
+
+### 1. The Simple Analogy: Bitmaps vs. Vector Graphics
+
+Think of standard neural networks (like CNNs, U-Nets, or ResNets) as **Pixel Bitmaps (.PNG)**:
+* If you train a CNN to predict airflow or temperature on a $64 \times 64$ grid, it memorizes relations between fixed pixel coordinates.
+* If you suddenly ask it to make predictions at $512 \times 512$ (e.g. zooming in for high-definition details), it **fails catastrophically** because its convolutional kernels are tied to fixed grid spacings.
+
+A **Neural Operator** (like FNO, TFNO, DeepONet, or GNO) is like a **Vector Graphic (.SVG)**:
+* Instead of mapping pixel grids to pixel grids, it learns the **underlying continuous physical law** (the operator between function spaces).
+* You can train a neural operator cheaply on a coarse, low-resolution grid ($64 \times 64$) and then instantly query it at **any finer resolution** ($128 \times 128$, $256 \times 256$, $512 \times 512$) **zero-shot** without any retraining.
+
+```text
+Standard CNN / U-Net (Pixel-Bound):
+[64x64 Grid]  ──►  [ConvNet]  ──►  [64x64 Grid]  (Zooming into 512x512 breaks completely: >4000% error)
+
+Neural Operator (Continuous Physics):
+u(x) continuous  ──►  [Kernel Operator]  ──►  s(x) continuous  (Queryable at ANY grid resolution zero-shot)
+```
+
+---
+
+### 2. A Concrete Example: 5-Millisecond Aerodynamics
+
+* **The Classical Way:** An aerospace engineer wants to simulate airflow over an aircraft wing or forecast extreme weather. Running traditional numerical solvers (finite element or pseudo-spectral Navier-Stokes) takes **hours to days** on a high-performance computing cluster.
+* **The Neural Operator Promise:** Once trained, a neural operator can approximate the entire fluid velocity field in **under 5 milliseconds**—achieving a **10,000× speedup**.
+
+---
+
+### 3. The Catch: What Breaks When the Real World Changes?
+
+Neural operators look astonishing in benchmark papers on clean, static grids. But in real-world engineering, conditions *never* match the training set:
+
+* What happens if the **fluid changes** (e.g. thicker oil instead of water)?
+* What happens if the **geometry changes** (e.g. a curved hull instead of a square box)?
+* What happens if the **boundary changes** (e.g. rigid wall friction vs open periodic flow)?
+* What happens if **sensor inputs have noise** ($\sigma = 0.05$)?
+* What happens if you simulate for **20 seconds** instead of 1 second?
+* Most crucially: **Does the model violate fundamental physical laws** (e.g. creating mass out of nowhere or drifting kinetic energy)?
+
+---
+
+### 4. Project Positioning: The Crash-Test Facility for Scientific AI
+
+Most machine learning repositories stop at: *"Here is an implementation of FNO and DeepONet."* 
+
+**`OperatorLab` is different.** It is designed as a **scientific reliability lab and crash-test facility** for neural operators:
+
+```text
+                 OperatorLab
+                      │
+          ┌───────────┴───────────┐
+          ↓                       ↓
+   Neural Operator SDK       OperatorArena
+          │                       │
+     train models            evaluate models
+(FNO, TFNO, DeepONet, GNO) (stress tests, distribution shifts,
+          │                 physical validity audits)
+          └──────────┬────────────┘
+                     ↓
+         Executive Generalization Audit
+          (Reliability Score: 88/100)
+```
+
+1. **Neural Operator SDK**: High-performance implementations of foundational operators ([FNO](operatorlab/models/fno.py), [TFNO](operatorlab/models/tfno.py), [DeepONet](operatorlab/models/deeponet.py), [GNO](operatorlab/models/gno.py), [Hybrid](operatorlab/models/hybrid.py)) and fast PDE solvers.
+2. **OperatorArena**: A standardized benchmark harness that audits model reliability across simultaneous shifts in resolution, geometry, physics parameters, boundaries, noise, and conservation laws.
+
+With a single command:
+```bash
+$ operatorlab stress checkpoints/my_model.pt --suite full
+```
+You get a clear, executive report of what **PASSES**, what **WARNS**, and what **FAILS** before deploying a neural surrogate into mission-critical engineering.
 
 ---
 
